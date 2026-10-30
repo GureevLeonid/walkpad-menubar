@@ -111,7 +111,6 @@ struct MenuBarLabel: View {
 struct StatsPanel: View {
     let pad: WalkPad
     @AppStorage("bar.whenIdle") private var showWhenIdle = false
-    @AppStorage(restoreSpeedKey) private var restoreSpeed = true
     @Bindable private var login = loginItem
 
     var body: some View {
@@ -162,7 +161,6 @@ struct StatsPanel: View {
                     pad.changeIncline(by: -pad.inclineRange.step)
                 }
             }
-            Toggle("Restore speed after pause", isOn: $restoreSpeed)
             if let err = pad.commandError {
                 Text(err).font(.caption).foregroundStyle(.red)
             }

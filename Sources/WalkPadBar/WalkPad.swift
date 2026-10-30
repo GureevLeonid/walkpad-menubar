@@ -10,7 +10,6 @@ private let controlPoint = CBUUID(string: "2AD9")
 private let speedRangeChar = CBUUID(string: "2AD4")
 private let inclineRangeChar = CBUUID(string: "2AD5")
 private let savedPeripheralKey = "peripheralID"
-let restoreSpeedKey = "restoreSpeedAfterPause"
 private let log = Logger(subsystem: "com.github.gureevleonid.walkpadbar", category: "ble")
 
 /// Keeps a BLE connection to an FTMS treadmill and exposes its latest stats.
@@ -247,8 +246,7 @@ final class WalkPad: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         lastUpdate = Date()
         if let speed = s.speedKmh,
            let cruise = belt.observe(speed: speed, elapsed: s.elapsedSeconds,
-                                     distance: stats.distanceMeters, at: Date()),
-           UserDefaults.standard.object(forKey: restoreSpeedKey) as? Bool ?? true {
+                                     distance: stats.distanceMeters, at: Date()) {
             log.info("resumed at \(speed) km/h, restoring \(cruise) km/h")
             targetSpeed = (cruise, Date())
             send(.setSpeed(kmh: speedRange.clamp(cruise)))
