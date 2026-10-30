@@ -8,11 +8,16 @@ should work with any FTMS treadmill).
 - Panel: status, speed, incline, distance, steps, time, kcal; menu-bar field toggles; launch at login.
 - Controls: start / pause / stop, speed ±0.1 km/h, incline ±1 % via the FTMS Control Point (`2AD9`),
   clamped to the pad's advertised ranges (`2AD4`/`2AD5`: 1–6 km/h, 0–9 %).
+- Restore speed after pause: the pad resumes at 1 km/h; the app sets back the last speed that held
+  for 3 s (or the last one set from the panel). Applies to pauses from the app or the remote, as long
+  as the session's distance counter wasn't reset. While paused the pad keeps reporting the old speed
+  with frozen counters, so "moving" means the elapsed-time counter is advancing.
 
 ## Build
 
 ```sh
-swift test              # parser tests (Swift Testing; works with Command Line Tools only)
+swift test              # Swift Testing; works with Command Line Tools only (rerun on a spurious
+                        # "plugin for module 'TestingMacros' not found" — flaky CLT plugin load)
 ./build.sh install      # builds WalkPadBar.app, copies to ~/Applications, launches
 ```
 

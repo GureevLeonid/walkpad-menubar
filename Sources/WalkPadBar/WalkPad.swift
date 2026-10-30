@@ -10,6 +10,7 @@ private let controlPoint = CBUUID(string: "2AD9")
 private let speedRangeChar = CBUUID(string: "2AD4")
 private let inclineRangeChar = CBUUID(string: "2AD5")
 private let savedPeripheralKey = "peripheralID"
+let restoreSpeedKey = "restoreSpeedAfterPause"
 private let log = Logger(subsystem: "com.github.gureevleonid.walkpadbar", category: "ble")
 
 /// Keeps a BLE connection to an FTMS treadmill and exposes its latest stats.
@@ -32,6 +33,8 @@ final class WalkPad: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     /// Belt is moving and data is fresh. Re-evaluated on every sample and once a second.
     private(set) var isRunning = false
+    /// Paused mid-session: the pad keeps reporting the old speed with frozen counters.
+    private(set) var isPaused = false
 
     /// Pad's control point is available.
     var canControl: Bool { link == .connected && controlChar != nil }
@@ -49,18 +52,22 @@ final class WalkPad: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     /// instead of on the (lagging) reported values.
     @ObservationIgnored private var targetSpeed: (value: Double, at: Date)?
     @ObservationIgnored private var targetIncline: (value: Double, at: Date)?
+    @ObservationIgnored private var belt = BeltTracker()
 
     override init() {
         super.init()
         central = CBCentralManager(delegate: self, queue: .main)
-        // Notifications simply stop when the belt halts or the link drops, so poll for staleness.
+        // Frames can stop arriving (link drop) or freeze (pause), so re-check movement every second.
         Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.refreshRunning() }
     }
 
     private func refreshRunning() {
-        let fresh = lastUpdate.map { Date().timeIntervalSince($0) < 5 } ?? false
-        let running = link == .connected && fresh && (stats.speedKmh ?? 0) > 0
+        let now = Date()
+        let live = link == .connected && lastUpdate.map { now.timeIntervalSince($0) < 5 } ?? false
+        let running = live && belt.isMoving(at: now)
+        let paused = live && belt.isPaused
         if running != isRunning { isRunning = running }
+        if paused != isPaused { isPaused = paused }
     }
 
     // MARK: Control
@@ -73,6 +80,7 @@ final class WalkPad: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         let base = recent(targetSpeed) ?? stats.speedKmh ?? speedRange.min
         let v = speedRange.clamp(base + delta)
         targetSpeed = (v, Date())
+        belt.userSet(v)
         send(.setSpeed(kmh: v))
     }
 
@@ -191,6 +199,7 @@ final class WalkPad: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         controlChar = nil
         hasControl = false
         queued = []
+        belt = BeltTracker()
         refreshRunning()
         guard p.identifier == peripheral?.identifier else { return }
         connect(p)
@@ -236,6 +245,14 @@ final class WalkPad: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         guard ch.uuid == treadmillData, let s = TreadmillDataParser.parse(v) else { return }
         stats.merge(s)
         lastUpdate = Date()
+        if let speed = s.speedKmh,
+           let cruise = belt.observe(speed: speed, elapsed: s.elapsedSeconds,
+                                     distance: stats.distanceMeters, at: Date()),
+           UserDefaults.standard.object(forKey: restoreSpeedKey) as? Bool ?? true {
+            log.info("resumed at \(speed) km/h, restoring \(cruise) km/h")
+            targetSpeed = (cruise, Date())
+            send(.setSpeed(kmh: speedRange.clamp(cruise)))
+        }
         refreshRunning()
         log.debug("sample: \(String(describing: self.stats), privacy: .public)")
     }
